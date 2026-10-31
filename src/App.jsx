@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
 import Catalog from './pages/Catalog.jsx'
@@ -26,6 +26,26 @@ function App() {
   const [archiveTarget, setArchiveTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [archiveToast, setArchiveToast] = useState('')
+
+  // Deep-link: if URL hash is #gun/{id}, open that gun's detail on first load
+  useEffect(() => {
+    const hash = window.location.hash // e.g. "#gun/42"
+    const match = hash.match(/^#gun\/(.+)$/)
+    if (!match) return
+    const gunId = match[1]
+    gunService.getGunById(gunId)
+      .then((res) => {
+        const gun = res?.data ?? res
+        if (gun && gun.id) {
+          setSelectedGun(gun)
+          setMode('detail')
+          setShowSplash(false) // skip splash when navigating via shared link
+        }
+      })
+      .catch(() => {
+        // If not found, just show normal catalog
+      })
+  }, [])
 
   const showToast = (msg) => {
     setArchiveToast(msg)
