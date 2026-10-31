@@ -1,15 +1,14 @@
 import { Plus } from 'lucide-react'
 import { useFavorites } from '../hooks/useFavorites'
+import CartButton from './common/CartButton'
 
 const NAV_ITEMS = [
   { id: 'Catalog', label: 'Catalog' },
   { id: 'Favorites', label: 'Favorites', hasBadge: true },
   { id: 'Profile', label: 'Profile' },
-  { id: 'About', label: 'About' },
-  { id: 'Contact', label: 'Contact' },
 ]
 
-function Header({ tab, onTab, onNavigateCreate }) {
+function Header({ tab, onTab, onNavigateCreate, onNavigateCart }) {
   const { favorites } = useFavorites()
   const favCount = favorites ? favorites.length : 0
 
@@ -38,16 +37,23 @@ function Header({ tab, onTab, onNavigateCreate }) {
         ))}
       </nav>
 
-      {onNavigateCreate && (
-        <button
-          type="button"
-          className="btn btn--primary btn--sm header-cta"
-          onClick={onNavigateCreate}
-          title="Register new hardware"
-        >
-          <Plus size={15} /> Add Hardware
-        </button>
-      )}
+      <div className="header-right">
+        {/* Cart button */}
+        {onNavigateCart && (
+          <CartButton onClick={onNavigateCart} />
+        )}
+
+        {onNavigateCreate && (
+          <button
+            type="button"
+            className="btn btn--primary btn--sm header-cta"
+            onClick={onNavigateCreate}
+            title="Register new hardware"
+          >
+            <Plus size={15} /> Add Hardware
+          </button>
+        )}
+      </div>
     </header>
   )
 }

@@ -3,13 +3,35 @@ import { apiClient, IS_SUPABASE } from '../config/api'
 // ---------------------------------------------------------------------------
 // ReviewService — product reviews & ratings.
 // Supports both Supabase (public.reviews) and university API (/api/v1/recipes/:id/reviews).
+// Thumbs up/down stored locally.
 // ---------------------------------------------------------------------------
+
+const THUMBS_KEY = 'bore_barrel_review_thumbs'
+
+function getThumbsData() {
+  try {
+    const raw = localStorage.getItem(THUMBS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveThumbsData(data) {
+  try {
+    localStorage.setItem(THUMBS_KEY, JSON.stringify(data))
+  } catch {
+    // ignore
+  }
+}
 
 class ReviewService {
   /**
    * Fetch all reviews for a given product.
    */
   async getReviews(gunId) {
+    const thumbsData = getThumbsData()
+
     if (IS_SUPABASE) {
       const data = await apiClient.get(
         `/rest/v1/reviews?product_id=eq.${gunId}&select=*&order=created_at.desc`,
@@ -22,13 +44,26 @@ class ReviewService {
             rating: r.rating,
             comment: r.comment || '',
             created_at: r.created_at,
+            thumbs_up: thumbsData[r.id]?.up || 0,
+            thumbs_down: thumbsData[r.id]?.down || 0,
+            user_thumb: thumbsData[r.id]?.user_thumb || null, // 'up' | 'down' | null
           }))
         : []
 
       return { success: true, data: list }
     }
 
-    return apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
+    const result = await apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
+    if (result && result.success && Array.isArray(result.data)) {
+      const enriched = result.data.map((r) => ({
+        ...r,
+        thumbs_up: thumbsData[r.id]?.up || 0,
+        thumbs_down: thumbsData[r.id]?.down || 0,
+        user_thumb: thumbsData[r.id]?.user_thumb || null,
+      }))
+      return { ...result, data: enriched }
+    }
+    return result
   }
 
   /**
@@ -84,6 +119,39 @@ class ReviewService {
     }
 
     return apiClient.delete(`/api/v1/reviews/${reviewId}`)
+  }
+
+  /**
+   * Toggle thumbs up or down for a review (local only).
+   * @param {string|number} reviewId
+   * @param {'up'|'down'} direction
+   * @returns {{ thumbs_up: number, thumbs_down: number, user_thumb: string|null }}
+   */
+  toggleThumb(reviewId, direction) {
+    const thumbs = getThumbsData()
+    const current = thumbs[reviewId] || { up: 0, down: 0, user_thumb: null }
+
+    if (current.user_thumb === direction) {
+      // Undo thumb
+      const updated = {
+        up: direction === 'up' ? Math.max(0, current.up - 1) : current.up,
+        down: direction === 'down' ? Math.max(0, current.down - 1) : current.down,
+        user_thumb: null,
+      }
+      thumbs[reviewId] = updated
+      saveThumbsData(thumbs)
+      return updated
+    }
+
+    // Switch or set thumb
+    const updated = {
+      up: direction === 'up' ? current.up + 1 : (current.user_thumb === 'up' ? Math.max(0, current.up - 1) : current.up),
+      down: direction === 'down' ? current.down + 1 : (current.user_thumb === 'down' ? Math.max(0, current.down - 1) : current.down),
+      user_thumb: direction,
+    }
+    thumbs[reviewId] = updated
+    saveThumbsData(thumbs)
+    return updated
   }
 }
 

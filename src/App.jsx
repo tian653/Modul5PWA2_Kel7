@@ -4,11 +4,12 @@ import Footer from './components/Footer.jsx'
 import Catalog from './pages/Catalog.jsx'
 import FavoritesPage from './pages/FavoritesPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
+import EditProfilePage from './pages/EditProfilePage.jsx'
 import CreateGunPage from './pages/CreateGunPage.jsx'
 import EditGunPage from './pages/EditGunPage.jsx'
+import CartPage from './pages/CartPage.jsx'
+import ArchivePage from './pages/ArchivePage.jsx'
 import GunDetail from './components/gun/GunDetail.jsx'
-import About from './pages/About.jsx'
-import Contact from './pages/Contact.jsx'
 import PWABadge from './components/PWABadge.jsx'
 import ConfirmModal from './components/modals/ConfirmModal.jsx'
 import SplashScreen from './components/common/SplashScreen.jsx'
@@ -18,11 +19,18 @@ import './App.css'
 function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [tab, setTab] = useState('Catalog')
-  const [mode, setMode] = useState('list') // 'list' | 'create' | 'edit' | 'detail'
+  const [mode, setMode] = useState('list') // 'list' | 'create' | 'edit' | 'detail' | 'cart' | 'archive' | 'editProfile'
   const [selectedGun, setSelectedGun] = useState(null)
   const [editingGun, setEditingGun] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [archiveTarget, setArchiveTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [archiveToast, setArchiveToast] = useState('')
+
+  const showToast = (msg) => {
+    setArchiveToast(msg)
+    setTimeout(() => setArchiveToast(''), 3000)
+  }
 
   // Unified navigation handler
   const handleNavigate = (target, payload) => {
@@ -36,6 +44,15 @@ function App() {
     } else if (target === 'Detail') {
       setSelectedGun(payload)
       setMode('detail')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else if (target === 'Cart') {
+      setMode('cart')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else if (target === 'Archive') {
+      setMode('archive')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else if (target === 'EditProfile') {
+      setMode('editProfile')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } else {
       // Tab change
@@ -53,6 +70,18 @@ function App() {
     setEditingGun(null)
   }
 
+  const handleArchiveGun = (gun) => {
+    setArchiveTarget(gun)
+  }
+
+  const confirmArchive = () => {
+    if (!archiveTarget) return
+    gunService.archiveGun(archiveTarget.id)
+    showToast(`"${archiveTarget.name}" diarsipkan.`)
+    setArchiveTarget(null)
+    if (mode === 'detail') handleBackToList()
+  }
+
   return (
     <div className="shell">
       {showSplash && (
@@ -63,9 +92,45 @@ function App() {
         tab={mode === 'list' ? tab : ''}
         onTab={(newTab) => handleNavigate(newTab)}
         onNavigateCreate={() => handleNavigate('Create')}
+        onNavigateCart={() => handleNavigate('Cart')}
       />
 
+      {/* Archive toast */}
+      {archiveToast && (
+        <div className="toast toast--success" style={{ margin: '0 auto', maxWidth: '900px', padding: '10px 24px' }}>
+          {archiveToast}
+        </div>
+      )}
+
       <main className="main">
+        {/* Cart page */}
+        {mode === 'cart' && (
+          <CartPage
+            onBack={handleBackToList}
+            onNavigateCatalog={() => handleNavigate('Catalog')}
+          />
+        )}
+
+        {/* Archive page */}
+        {mode === 'archive' && (
+          <ArchivePage
+            onBack={() => {
+              setMode('list')
+              setTab('Profile')
+            }}
+          />
+        )}
+
+        {/* Edit Profile page */}
+        {mode === 'editProfile' && (
+          <EditProfilePage
+            onBack={() => {
+              setMode('list')
+              setTab('Profile')
+            }}
+          />
+        )}
+
         {/* Sub-page views */}
         {mode === 'create' && (
           <CreateGunPage
@@ -95,6 +160,7 @@ function App() {
             onBack={handleBackToList}
             onEdit={(g) => handleNavigate('Edit', g)}
             onDelete={(g) => setDeleteTarget(g)}
+            onArchive={handleArchiveGun}
           />
         )}
 
@@ -104,6 +170,7 @@ function App() {
             {tab === 'Catalog' && (
               <Catalog
                 onNavigate={(destination, payload) => handleNavigate(destination, payload)}
+                onArchive={handleArchiveGun}
               />
             )}
             {tab === 'Favorites' && (
@@ -113,10 +180,11 @@ function App() {
               />
             )}
             {tab === 'Profile' && (
-              <ProfilePage onReplaySplash={() => setShowSplash(true)} />
+              <ProfilePage
+                onReplaySplash={() => setShowSplash(true)}
+                onNavigate={handleNavigate}
+              />
             )}
-            {tab === 'About' && <About />}
-            {tab === 'Contact' && <Contact />}
           </>
         )}
       </main>
@@ -144,6 +212,17 @@ function App() {
           }
         }}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Archive Confirmation */}
+      <ConfirmModal
+        open={Boolean(archiveTarget)}
+        title="Arsipkan Produk"
+        message={`Arsipkan "${archiveTarget?.name}"? Produk akan disembunyikan dari katalog. Kamu bisa memulihkannya dari halaman Arsip di Profil.`}
+        confirmLabel="Arsipkan"
+        loading={false}
+        onConfirm={confirmArchive}
+        onCancel={() => setArchiveTarget(null)}
       />
 
       <PWABadge />

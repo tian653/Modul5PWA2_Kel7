@@ -51,6 +51,31 @@ export const normalizeProduct = (item) => {
     image: item.image_url || item.image || '/guns/pistol.svg',
     ingredients: specsList,
     steps: stepsList,
+    // Soft delete fields
+    is_archived: item.is_archived || false,
+    archived_at: item.archived_at || null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ARCHIVE KEY — localStorage key for archived items (soft delete fallback)
+// ---------------------------------------------------------------------------
+const ARCHIVE_KEY = 'bore_barrel_archived_ids'
+
+function getArchivedIds() {
+  try {
+    const raw = localStorage.getItem(ARCHIVE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function setArchivedIds(ids) {
+  try {
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(ids))
+  } catch {
+    // ignore
   }
 }
 
@@ -62,50 +87,75 @@ export const normalizeProduct = (item) => {
 class GunService {
   /**
    * Fetch a paginated, filterable list of products.
+   * @param {Object} params - query params
+   * @param {boolean} [params.include_archived=false] - include archived items
    */
   async getGuns(params = {}) {
+    const { include_archived = false, ...queryParams } = params
+    const archivedIds = getArchivedIds()
+
     if (IS_SUPABASE) {
       const queryParts = ['select=*']
 
-      if (params.search) {
-        queryParts.push(`name=ilike.*${encodeURIComponent(params.search)}*`)
+      if (queryParams.search) {
+        queryParts.push(`name=ilike.*${encodeURIComponent(queryParams.search)}*`)
       }
 
-      if (params.category && params.category !== 'All') {
-        queryParts.push(`type=eq.${encodeURIComponent(params.category)}`)
+      if (queryParams.category && queryParams.category !== 'All') {
+        queryParts.push(`type=eq.${encodeURIComponent(queryParams.category)}`)
       }
 
-      if (params.sort_by) {
-        const order = params.order === 'desc' ? 'desc' : 'asc'
-        queryParts.push(`order=${encodeURIComponent(params.sort_by)}.${order}`)
+      if (queryParams.sort_by) {
+        const order = queryParams.order === 'desc' ? 'desc' : 'asc'
+        queryParts.push(`order=${encodeURIComponent(queryParams.sort_by)}.${order}`)
       } else {
         queryParts.push('order=created_at.desc')
       }
 
-      if (params.limit) {
-        queryParts.push(`limit=${params.limit}`)
+      if (queryParams.limit) {
+        queryParts.push(`limit=${queryParams.limit}`)
       }
 
       const queryString = queryParts.join('&')
       const data = await apiClient.get(`/rest/v1/products?${queryString}`)
-      const list = Array.isArray(data) ? data.map(normalizeProduct) : []
+      let list = Array.isArray(data) ? data.map(normalizeProduct) : []
+
+      // Apply local soft-delete filter
+      if (!include_archived) {
+        list = list.filter((g) => !archivedIds.includes(String(g.id)))
+      } else {
+        // Return only archived
+        list = list.filter((g) => archivedIds.includes(String(g.id)))
+      }
 
       return {
         success: true,
         data: list,
         pagination: {
           total: list.length,
-          page: params.page || 1,
-          limit: params.limit || 50,
+          page: queryParams.page || 1,
+          limit: queryParams.limit || 50,
         },
       }
     }
 
     // Fallback: university REST API
     const clean = Object.fromEntries(
-      Object.entries(params).filter(([, v]) => v !== '' && v != null),
+      Object.entries(queryParams).filter(([, v]) => v !== '' && v != null),
     )
-    return apiClient.get('/api/v1/recipes', { params: clean })
+    const result = await apiClient.get('/api/v1/recipes', { params: clean })
+
+    if (result && result.success && Array.isArray(result.data)) {
+      let list = result.data
+      if (!include_archived) {
+        list = list.filter((g) => !archivedIds.includes(String(g.id)))
+      } else {
+        list = list.filter((g) => archivedIds.includes(String(g.id)))
+      }
+      return { ...result, data: list }
+    }
+
+    return result
   }
 
   /**
@@ -196,11 +246,47 @@ class GunService {
   }
 
   /**
-   * Delete product.
+   * Soft delete (archive) a product — stores in localStorage.
+   * The item remains in the backend but is hidden from normal listings.
+   * @param {string|number} id
+   */
+  archiveGun(id) {
+    const ids = getArchivedIds()
+    const strId = String(id)
+    if (!ids.includes(strId)) {
+      ids.push(strId)
+      setArchivedIds(ids)
+    }
+    return { success: true }
+  }
+
+  /**
+   * Restore an archived product (undo soft delete).
+   * @param {string|number} id
+   */
+  restoreGun(id) {
+    const ids = getArchivedIds().filter((x) => x !== String(id))
+    setArchivedIds(ids)
+    return { success: true }
+  }
+
+  /**
+   * Check if a product is archived.
+   * @param {string|number} id
+   * @returns {boolean}
+   */
+  isArchived(id) {
+    return getArchivedIds().includes(String(id))
+  }
+
+  /**
+   * Hard delete product.
    */
   async deleteGun(id) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/products?id=eq.${id}`)
+      // Also remove from archived list if present
+      this.restoreGun(id)
       return { success: true }
     }
     return apiClient.delete(`/api/v1/recipes/${id}`)
