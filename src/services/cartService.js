@@ -5,7 +5,7 @@
 
 const CART_KEY = 'bore_barrel_cart'
 
-const WA_NUMBER = '6281234567890' // Ganti dengan nomor WA pribadi
+const WA_NUMBER = '6282233312480' // Ganti dengan nomor WA pribadi
 
 /**
  * Get current cart items
